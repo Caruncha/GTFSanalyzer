@@ -24,6 +24,8 @@ if uploaded_file:
         trips = _read_csv_from_zip(z, 'trips.txt')
         stop_times = _read_csv_from_zip(z, 'stop_times.txt')
         shapes = _read_csv_from_zip(z, 'shapes.txt')
+        calendar = _read_csv_from_zip(z, 'calendar.txt')
+        calendar_dates = _read_csv_from_zip(z, 'calendar_dates.txt')
 
         if routes is None or trips is None or stops is None or stop_times is None:
             st.error('Fichiers GTFS incomplets. Assurez-vous que stops.txt, routes.txt, trips.txt et stop_times.txt sont présents.')
@@ -42,55 +44,89 @@ if uploaded_file:
         if 'route_id' in routes.columns:
             routes['route_id'] = routes['route_id'].astype(str)
 
-        # Sélecteurs
+        # --- Sélecteurs ---
         st.sidebar.header('Filtres')
-        selected_route = st.sidebar.selectbox('Choisir une route', routes['route_id'].unique())
-        trips_filtered = trips[trips['route_id'] == selected_route]
+
+        # Sélection de la date
+        all_dates = []
+        if calendar is not None:
+            for _, row in calendar.iterrows():
+                all_dates.extend(pd.date_range(start=str(row['start_date']), end=str(row['end_date'])).strftime('%Y%m%d').tolist())
+        if calendar_dates is not None:
+            all_dates.extend(calendar_dates['date'].astype(str).tolist())
+        all_dates = sorted(set(all_dates))
+
+        if not all_dates:
+            st.error("Impossible de déterminer les dates de service (calendar.txt manquant ou vide).")
+            st.stop()
+
+        selected_date = st.sidebar.selectbox('Choisir une date (AAAA-MM-JJ)', [pd.to_datetime(d).strftime('%Y-%m-%d') for d in all_dates])
+        selected_date_str = pd.to_datetime(selected_date).strftime('%Y%m%d')
+
+        # Filtrer les services actifs pour cette date
+        active_services = set()
+        if calendar is not None:
+            for _, row in calendar.iterrows():
+                if row['start_date'] <= int(selected_date_str) <= row['end_date']:
+                    weekday = pd.to_datetime(selected_date).day_name().lower()
+                    if row[weekday] == 1:
+                        active_services.add(row['service_id'])
+        if calendar_dates is not None:
+            exceptions = calendar_dates[calendar_dates['date'] == int(selected_date_str)]
+            for _, row in exceptions.iterrows():
+                if row['exception_type'] == 1:
+                    active_services.add(row['service_id'])
+                elif row['exception_type'] == 2 and row['service_id'] in active_services:
+                    active_services.remove(row['service_id'])
+
+        trips_filtered = trips[trips['service_id'].isin(active_services)]
+
+        if trips_filtered.empty:
+            st.warning("Aucun voyage actif pour cette date.")
+            st.stop()
+
+        selected_route = st.sidebar.selectbox('Choisir une route', trips_filtered['route_id'].unique())
+        trips_filtered = trips_filtered[trips_filtered['route_id'] == selected_route]
         selected_trip = st.sidebar.selectbox('Choisir un trip', trips_filtered['trip_id'].unique())
 
         # Stops pour ce trip
         stops_for_trip = stop_times[stop_times['trip_id'] == selected_trip]
-        stops_filtered = stops.merge(stops_for_trip, on='stop_id', how='inner')
+        stops_filtered = stops.merge(stops_for_trip, on='stop_id', how='inner').sort_values('stop_sequence')
 
         st.subheader('Carte interactive')
 
         # Déterminer le centre de la carte avec fallback
-        lat_mean = None
-        lon_mean = None
-        if shapes is not None and 'shape_id' in trips_filtered.columns:
-            shape_id = trips_filtered[trips_filtered['trip_id'] == selected_trip]['shape_id'].values[0]
-            shape_points = shapes[shapes['shape_id'] == shape_id].sort_values('shape_pt_sequence')
-            if not shape_points.empty:
-                lat_mean = shape_points['shape_pt_lat'].mean()
-                lon_mean = shape_points['shape_pt_lon'].mean()
-        if pd.isna(lat_mean) or pd.isna(lon_mean):
-            lat_mean = stops_filtered['stop_lat'].dropna().mean()
-            lon_mean = stops_filtered['stop_lon'].dropna().mean()
+        lat_mean = stops_filtered['stop_lat'].dropna().mean()
+        lon_mean = stops_filtered['stop_lon'].dropna().mean()
         if pd.isna(lat_mean) or pd.isna(lon_mean):
             st.warning("Coordonnées manquantes pour centrer la carte. Utilisation d'un fallback.")
             lat_mean, lon_mean = 45.5, -73.6
 
         m = folium.Map(location=[lat_mean, lon_mean], zoom_start=14)
 
-        # Ajouter les arrêts avec design : cercles blancs, premier vert, dernier rouge, popup simple
-        for i, row in stops_filtered.reset_index().iterrows():
-            color = 'white'
-            if i == 0:
-                color = 'green'
-            elif i == len(stops_filtered) - 1:
-                color = 'red'
+        # Ajouter les arrêts avec design demandé
+        n = len(stops_filtered)
+        for idx, row in stops_filtered.reset_index().iterrows():
+            la, lo = row['stop_lat'], row['stop_lon']
+            if idx == 0:
+                color = "green"; fill = "green"; radius = 7
+            elif idx == n - 1:
+                color = "red"; fill = "red"; radius = 7
+            else:
+                color = "#666666"; fill = "#ffffff"; radius = 5
             folium.CircleMarker(
-                location=[row['stop_lat'], row['stop_lon']],
-                radius=7,
+                location=(la, lo),
+                radius=radius,
                 color=color,
                 fill=True,
-                fill_color=color,
-                fill_opacity=1,
+                fill_color=fill,
+                fill_opacity=0.95,
+                weight=2,
                 popup=f"{row['stop_name']} (ID: {row['stop_id']})"
             ).add_to(m)
 
         # Ajouter la polyline si shapes.txt existe
-        if shapes is not None:
+        if shapes is not None and 'shape_id' in trips_filtered.columns:
             shape_id = trips_filtered[trips_filtered['trip_id'] == selected_trip]['shape_id'].values[0]
             shape_points = shapes[shapes['shape_id'] == shape_id].sort_values('shape_pt_sequence')
             if not shape_points.empty:
@@ -102,7 +138,7 @@ if uploaded_file:
             <b>Légende</b><br>
             <span style="color:green;">&#9679;</span> Départ<br>
             <span style="color:red;">&#9679;</span> Arrivée<br>
-            <span style="color:black;">&#9679;</span> Arrêts intermédiaires
+            <span style="color:#666666;">&#9679;</span> Arrêts intermédiaires
         </div>
         """
         m.get_root().html.add_child(folium.Element(legend_html))
