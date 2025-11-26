@@ -47,7 +47,7 @@ if uploaded_file:
         # --- Sélecteurs ---
         st.sidebar.header('Filtres')
 
-        # Sélection de la date
+        # Sélection de la date avec jour de la semaine
         all_dates = []
         if calendar is not None:
             for _, row in calendar.iterrows():
@@ -60,15 +60,16 @@ if uploaded_file:
             st.error("Impossible de déterminer les dates de service (calendar.txt manquant ou vide).")
             st.stop()
 
-        selected_date = st.sidebar.selectbox('Choisir une date (AAAA-MM-JJ)', [pd.to_datetime(d).strftime('%Y-%m-%d') for d in all_dates])
-        selected_date_str = pd.to_datetime(selected_date).strftime('%Y%m%d')
+        date_options = [f"{pd.to_datetime(d).strftime('%Y-%m-%d')} ({pd.to_datetime(d).strftime('%A')})" for d in all_dates]
+        selected_date_display = st.sidebar.selectbox('Choisir une date', date_options)
+        selected_date_str = selected_date_display.split(' ')[0].replace('-', '')
 
         # Filtrer les services actifs pour cette date
         active_services = set()
         if calendar is not None:
             for _, row in calendar.iterrows():
                 if row['start_date'] <= int(selected_date_str) <= row['end_date']:
-                    weekday = pd.to_datetime(selected_date).day_name().lower()
+                    weekday = pd.to_datetime(selected_date_str).day_name().lower()
                     if row[weekday] == 1:
                         active_services.add(row['service_id'])
         if calendar_dates is not None:
@@ -104,7 +105,14 @@ if uploaded_file:
 
         m = folium.Map(location=[lat_mean, lon_mean], zoom_start=14)
 
-        # Ajouter les arrêts avec design demandé
+        # Ajouter la polyline en premier (derrière les arrêts)
+        if shapes is not None and 'shape_id' in trips_filtered.columns:
+            shape_id = trips_filtered[trips_filtered['trip_id'] == selected_trip]['shape_id'].values[0]
+            shape_points = shapes[shapes['shape_id'] == shape_id].sort_values('shape_pt_sequence')
+            if not shape_points.empty:
+                folium.PolyLine(shape_points[['shape_pt_lat', 'shape_pt_lon']].values, color='blue', weight=4).add_to(m)
+
+        # Ajouter les arrêts avec design demandé et popup amélioré
         n = len(stops_filtered)
         for idx, row in stops_filtered.reset_index().iterrows():
             la, lo = row['stop_lat'], row['stop_lon']
@@ -114,6 +122,13 @@ if uploaded_file:
                 color = "red"; fill = "red"; radius = 7
             else:
                 color = "#666666"; fill = "#ffffff"; radius = 5
+            popup_html = f"""
+            <div style="font-size:14px;">
+                <b>{row['stop_name']}</b><br>
+                ID: {row['stop_id']}<br>
+                Heure d'arrivée: {row.get('arrival_time','')}
+            </div>
+            """
             folium.CircleMarker(
                 location=(la, lo),
                 radius=radius,
@@ -122,15 +137,8 @@ if uploaded_file:
                 fill_color=fill,
                 fill_opacity=0.95,
                 weight=2,
-                popup=f"{row['stop_name']} (ID: {row['stop_id']})"
+                popup=popup_html
             ).add_to(m)
-
-        # Ajouter la polyline si shapes.txt existe
-        if shapes is not None and 'shape_id' in trips_filtered.columns:
-            shape_id = trips_filtered[trips_filtered['trip_id'] == selected_trip]['shape_id'].values[0]
-            shape_points = shapes[shapes['shape_id'] == shape_id].sort_values('shape_pt_sequence')
-            if not shape_points.empty:
-                folium.PolyLine(shape_points[['shape_pt_lat', 'shape_pt_lon']].values, color='blue', weight=4).add_to(m)
 
         # Ajouter une légende
         legend_html = """
