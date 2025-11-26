@@ -38,21 +38,28 @@ if uploaded_file:
         stops_for_trip = stop_times[stop_times["trip_id"] == selected_trip]
         stops_filtered = stops[stops["stop_id"].isin(stops_for_trip["stop_id"])]
 
-        # Carte Folium
-        st.subheader("Carte interactive")
-        m = folium.Map(location=[stops_filtered["stop_lat"].mean(), stops_filtered["stop_lon"].mean()], zoom_start=12)
+   
+# Carte Folium
+st.subheader("Carte interactive")
 
-        # Ajouter les arrêts
-        for _, row in stops_filtered.iterrows():
-            folium.Marker([row["stop_lat"], row["stop_lon"]], popup=row["stop_name"]).add_to(m)
+if not stops_filtered.empty:
+    center_lat = stops_filtered["stop_lat"].mean()
+    center_lon = stops_filtered["stop_lon"].mean()
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=12)
 
-        # Ajouter la polyline si shapes.txt existe
-        if shapes is not None:
-            shape_id = trips_filtered[trips_filtered["trip_id"] == selected_trip]["shape_id"].values[0]
-            shape_points = shapes[shapes["shape_id"] == shape_id].sort_values("shape_pt_sequence")
-            folium.PolyLine(shape_points[["shape_pt_lat", "shape_pt_lon"]].values, color="blue", weight=3).add_to(m)
+    # Ajouter les arrêts
+    for _, row in stops_filtered.iterrows():
+        folium.Marker([row["stop_lat"], row["stop_lon"]], popup=row["stop_name"]).add_to(m)
 
-        st_folium(m, width=800, height=600)
+    # Ajouter la polyline si shapes.txt existe
+    if shapes is not None and "shape_id" in trips_filtered.columns:
+        shape_id = trips_filtered[trips_filtered["trip_id"] == selected_trip]["shape_id"].values[0]
+        shape_points = shapes[shapes["shape_id"] == shape_id].sort_values("shape_pt_sequence")
+        folium.PolyLine(shape_points[["shape_pt_lat", "shape_pt_lon"]].values, color="blue", weight=3).add_to(m)
+
+    st_folium(m, width=800, height=600)
+else:
+
 
         # Tableau filtré
         st.subheader("Arrêts pour le trip sélectionné")
