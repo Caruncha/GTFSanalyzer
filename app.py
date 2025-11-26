@@ -47,7 +47,6 @@ if uploaded_file:
         # --- Barre latérale : filtres ---
         st.sidebar.header("Filtres")
 
-        # Préparer un label lisible pour les routes
         def format_route_label(row):
             short = str(row.get("route_short_name", "")).strip()
             long = str(row.get("route_long_name", "")).strip()
@@ -68,7 +67,6 @@ if uploaded_file:
 
         trips_for_route = trips[trips["route_id"] == selected_route].copy()
 
-        # Direction
         use_direction_id = ("direction_id" in trips_for_route.columns) and (trips_for_route["direction_id"].dropna().nunique() > 0)
         if use_direction_id:
             dir_values = sorted(trips_for_route["direction_id"].dropna().astype(int).unique().tolist())
@@ -94,7 +92,6 @@ if uploaded_file:
         trip_label = st.sidebar.selectbox("Choisir un voyage", trips_lv2["label"].tolist())
         selected_trip_id = trips_lv2.loc[trips_lv2["label"] == trip_label, "trip_id"].iloc[0]
 
-        # Arrêts du voyage
         st.subheader("Arrêts pour le voyage sélectionné")
         stops_for_trip = stop_times[stop_times["trip_id"] == selected_trip_id].copy()
         if stops_for_trip.empty:
@@ -115,15 +112,18 @@ if uploaded_file:
 
         first_stop = stops_joined.iloc[0]
         last_stop = stops_joined.iloc[-1]
-        st.info(f"**Arrêt de départ**: {first_stop.get('stop_name','')} (ID: {first_stop.get('stop_id','')}, arrivée: {first_stop.get('arrival_time','')})
+        st.info(
+            f"**Arrêt de départ**: {first_stop.get('stop_name','')} "
+            f"(ID: {first_stop.get('stop_id','')}, arrivée: {first_stop.get('arrival_time','')})
 
 "
-                f"**Arrêt de fin**: {last_stop.get('stop_name','')} (ID: {last_stop.get('stop_id','')}, arrivée: {last_stop.get('arrival_time','')})")
+            f"**Arrêt de fin**: {last_stop.get('stop_name','')} "
+            f"(ID: {last_stop.get('stop_id','')}, arrivée: {last_stop.get('arrival_time','')})"
+        )
 
         csv = stops_joined[display_cols].to_csv(index=False).encode('utf-8')
         st.download_button("Exporter les arrêts (CSV)", csv, file_name=f"stops_{selected_trip_id}.csv", mime="text/csv")
 
-        # Carte Folium avec fallback si NaN
         st.subheader("Carte interactive")
         lat_mean = stops_joined["stop_lat"].dropna().mean() if "stop_lat" in stops_joined.columns else None
         lon_mean = stops_joined["stop_lon"].dropna().mean() if "stop_lon" in stops_joined.columns else None
