@@ -103,13 +103,14 @@ if uploaded_file:
         # --- Niveau 3 : Arrêts du voyage ---
         st.subheader("Arrêts pour le voyage sélectionné")
 
-        stops_for_trip = stop_times[stop_times["trip_id"] == selected_trip_id].copy()
-        if stops_for_trip.empty:
-            st.warning("Aucun arrêt trouvé pour ce voyage.")
-            st.stop()
+       
+# Harmoniser les types avant le merge
+stops_for_trip["stop_id"] = stops_for_trip["stop_id"].astype(str)
+stops["stop_id"] = stops["stop_id"].astype(str)
 
-        # Joindre avec stops pour récupérer lat/lon et noms
-        stops_joined = stops_for_trip.merge(stops, on="stop_id", how="left")
+# Merge
+stops_joined = stops_for_trip.merge(stops, on="stop_id", how="left")
+
 
         # Ordonner par stop_sequence
         if "stop_sequence" in stops_joined.columns:
