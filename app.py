@@ -112,14 +112,14 @@ if uploaded_file:
 
         first_stop = stops_joined.iloc[0]
         last_stop = stops_joined.iloc[-1]
-        st.info(
-            f"**Arrêt de départ**: {first_stop.get('stop_name','')} "
-            f"(ID: {first_stop.get('stop_id','')}, arrivée: {first_stop.get('arrival_time','')})
 
-"
-            f"**Arrêt de fin**: {last_stop.get('stop_name','')} "
-            f"(ID: {last_stop.get('stop_id','')}, arrivée: {last_stop.get('arrival_time','')})"
-        )
+st.info(
+    f"**Arrêt de départ**: {first_stop.get('stop_name','')} "
+    f"(ID: {first_stop.get('stop_id','')}, arrivée: {first_stop.get('arrival_time','')})\n\n"
+    f"**Arrêt de fin**: {last_stop.get('stop_name','')} "
+    f"(ID: {last_stop.get('stop_id','')}, arrivée: {last_stop.get('arrival_time','')})"
+)
+
 
         csv = stops_joined[display_cols].to_csv(index=False).encode('utf-8')
         st.download_button("Exporter les arrêts (CSV)", csv, file_name=f"stops_{selected_trip_id}.csv", mime="text/csv")
